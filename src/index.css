@@ -1,0 +1,51 @@
+:root {
+  color-scheme: dark;
+  --bg-0: #07080f;
+  --bg-1: #0c0f18;
+  --bg-2: #12162a;
+  --accent: #5eead4;
+  --accent-2: #a78bfa;
+  --accent-3: #fb7185;
+  --text: #f4f6ff;
+  --muted: #9aa3b8;
+  --glass: rgba(255, 255, 255, 0.06);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --glow: none;
+  --radius: 20px;
+  --font-sans: 'DM Sans', system-ui, sans-serif;
+  --font-display: 'Instrument Serif', Georgia, serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font-sans);
+  background: var(--bg-0);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+button,
+input,
+select {
+  font-family: inherit;
+}
+
+::selection {
+  background: rgba(94, 234, 212, 0.35);
+  color: var(--text);
+}
