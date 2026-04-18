@@ -1,17 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import './App.css';
 import {
   ANNUAL_LOAN_RATE,
@@ -22,7 +11,6 @@ import {
   EMI_NONE,
   buildAnalysisReport,
   buildEmiPlans,
-  buildPayoffSeries,
   computeRiskScore,
   decideAction,
   formatCurrency,
@@ -45,17 +33,33 @@ const fadeSlide = {
   show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: [0.22, 1, 0.36, 1] } },
 };
 
+function digitsOnly(value) {
+  return String(value).replace(/\D/g, '');
+}
+
+function decimalRateOnly(value) {
+  let s = String(value).replace(/[^\d.]/g, '');
+  const firstDot = s.indexOf('.');
+  if (firstDot !== -1) {
+    s = s.slice(0, firstDot + 1) + s.slice(firstDot + 1).replace(/\./g, '');
+  }
+  const parts = s.split('.');
+  if (parts[1] && parts[1].length > 2) s = `${parts[0]}.${parts[1].slice(0, 2)}`;
+  return s;
+}
+
 function App() {
   const [incomeRaw, setIncomeRaw] = useState('85000');
   const [expensesRaw, setExpensesRaw] = useState('42000');
   const [savingsRaw, setSavingsRaw] = useState('320000');
   const [priceRaw, setPriceRaw] = useState('450000');
   const [assetType, setAssetType] = useState(ASSET_TYPES[0].id);
+  const [otherAssetLabel, setOtherAssetLabel] = useState('');
+  const [interestRateRaw, setInterestRateRaw] = useState('');
   const [emiTermMonths, setEmiTermMonths] = useState(12);
   const [downPaymentRate, setDownPaymentRate] = useState(0.35);
   const [activeSection, setActiveSection] = useState('inputs');
   const [chartTipOverview, setChartTipOverview] = useState(0);
-  const [chartTipPayoff, setChartTipPayoff] = useState(0);
   const [chartTipEmi, setChartTipEmi] = useState(0);
   const [pdfModal, setPdfModal] = useState({ open: false, url: null, blob: null });
 
@@ -63,6 +67,21 @@ function App() {
   const expenses = Math.max(0, Number(expensesRaw) || 0);
   const savings = Math.max(0, Number(savingsRaw) || 0);
   const assetPrice = Math.max(0, Number(priceRaw) || 0);
+
+  const annualLoanRate = useMemo(() => {
+    if (interestRateRaw === '' || interestRateRaw === '.') return ANNUAL_LOAN_RATE;
+    const n = parseFloat(interestRateRaw);
+    if (!Number.isFinite(n) || n < 0) return ANNUAL_LOAN_RATE;
+    return Math.min(Math.max(n / 100, 0), 0.6);
+  }, [interestRateRaw]);
+
+  const annualLoanRatePct = annualLoanRate * 100;
+
+  const rateDisclaimerText = useMemo(() => {
+    const p = annualLoanRatePct;
+    if (!Number.isFinite(p)) return '12';
+    return Math.abs(p - Math.round(p)) < 0.05 ? String(Math.round(p)) : p.toFixed(1);
+  }, [annualLoanRatePct]);
 
   const monthlySurplus = income - expenses;
   const emergencyLow = expenses * 3;
@@ -80,10 +99,10 @@ function App() {
 
   const emiPlans = useMemo(() => {
     if (!financingEnabled) return [];
-    return buildEmiPlans(loanPrincipal, income, ANNUAL_LOAN_RATE, {
+    return buildEmiPlans(loanPrincipal, income, annualLoanRate, {
       cashDownPayment: downPaymentAmount,
     });
-  }, [financingEnabled, loanPrincipal, income, downPaymentAmount]);
+  }, [financingEnabled, loanPrincipal, income, downPaymentAmount, annualLoanRate]);
 
   const bestPlan = useMemo(
     () => pickBestEmiPlan(emiPlans, monthlySurplus, income),
@@ -150,7 +169,13 @@ function App() {
 
   const stressExpense = useMemo(() => scenarioStress(income, expenses, 1, 1.1), [income, expenses]);
 
-  const assetTypeLabel = ASSET_TYPES.find((a) => a.id === assetType)?.label ?? 'Other';
+  const assetTypeLabel = useMemo(() => {
+    if (assetType === 'other') {
+      const t = otherAssetLabel.trim();
+      return t || 'Other';
+    }
+    return ASSET_TYPES.find((a) => a.id === assetType)?.label ?? 'Other';
+  }, [assetType, otherAssetLabel]);
 
   const analysis = useMemo(
     () =>
@@ -175,6 +200,7 @@ function App() {
         needsDownPayment: structureDown,
         downPaymentRateLabel,
         userInstallmentLabel,
+        annualLoanRatePct,
       }),
     [
       decision,
@@ -197,15 +223,9 @@ function App() {
       structureDown,
       downPaymentRateLabel,
       userInstallmentLabel,
+      annualLoanRatePct,
     ]
   );
-
-  const payoffSeries = useMemo(() => {
-    if (!financingEnabled || emiTermMonths === EMI_NONE) {
-      return [{ month: 0, principalPaid: 0, interestPaid: 0 }];
-    }
-    return buildPayoffSeries(loanPrincipal, ANNUAL_LOAN_RATE, emiTermMonths);
-  }, [financingEnabled, emiTermMonths, loanPrincipal]);
 
   const overviewBars = useMemo(() => {
     const rows = [
@@ -213,7 +233,7 @@ function App() {
       { name: 'Expenses', amount: expenses },
       { name: 'Savings', amount: savings },
       { name: 'Surplus', amount: Math.max(monthlySurplus, 0) },
-      { name: 'Asset Price', amount: assetPrice },
+      { name: 'Purchase Price', amount: assetPrice },
     ];
     if (downPaymentAmount > 0) {
       rows.splice(4, 0, { name: 'Down Payment', amount: downPaymentAmount });
@@ -279,6 +299,9 @@ function App() {
         loanPrincipal,
         needsDownPayment: structureDown,
         downPaymentRateLabel,
+        bestPlan,
+        monthlySurplus,
+        annualLoanRatePct,
       }
     );
     const url = URL.createObjectURL(blob);
@@ -334,29 +357,89 @@ function App() {
             <div className="grid-inputs">
               <div className="field">
                 <label htmlFor="income">Monthly income (PKR)</label>
-                <input id="income" inputMode="decimal" value={incomeRaw} onChange={(e) => setIncomeRaw(e.target.value)} />
+                <input
+                  id="income"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={incomeRaw}
+                  onChange={(e) => setIncomeRaw(digitsOnly(e.target.value))}
+                />
               </div>
               <div className="field">
                 <label htmlFor="expenses">Monthly expenses (PKR)</label>
-                <input id="expenses" inputMode="decimal" value={expensesRaw} onChange={(e) => setExpensesRaw(e.target.value)} />
+                <input
+                  id="expenses"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={expensesRaw}
+                  onChange={(e) => setExpensesRaw(digitsOnly(e.target.value))}
+                />
               </div>
               <div className="field">
                 <label htmlFor="savings">Liquid savings (PKR)</label>
-                <input id="savings" inputMode="decimal" value={savingsRaw} onChange={(e) => setSavingsRaw(e.target.value)} />
+                <input
+                  id="savings"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={savingsRaw}
+                  onChange={(e) => setSavingsRaw(digitsOnly(e.target.value))}
+                />
               </div>
               <div className="field">
-                <label htmlFor="price">Asset price (PKR)</label>
-                <input id="price" inputMode="decimal" value={priceRaw} onChange={(e) => setPriceRaw(e.target.value)} />
+                <label htmlFor="price">Purchase price (PKR)</label>
+                <input
+                  id="price"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={priceRaw}
+                  onChange={(e) => setPriceRaw(digitsOnly(e.target.value))}
+                />
               </div>
               <div className="field">
                 <label htmlFor="asset">Asset type</label>
-                <select id="asset" value={assetType} onChange={(e) => setAssetType(e.target.value)}>
+                <select
+                  id="asset"
+                  value={assetType}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setAssetType(v);
+                    if (v !== 'other') setOtherAssetLabel('');
+                  }}
+                >
                   {ASSET_TYPES.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.label}
                     </option>
                   ))}
                 </select>
+              </div>
+              {assetType === 'other' ? (
+                <div className="field field-span">
+                  <label htmlFor="other-asset">Name of asset</label>
+                  <input
+                    id="other-asset"
+                    type="text"
+                    placeholder="Describe what you are buying"
+                    value={otherAssetLabel}
+                    onChange={(e) => setOtherAssetLabel(e.target.value)}
+                    maxLength={80}
+                  />
+                </div>
+              ) : null}
+              <div className="field">
+                <label htmlFor="interest-rate">Annual interest rate (%)</label>
+                <input
+                  id="interest-rate"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  value={interestRateRaw}
+                  onChange={(e) => setInterestRateRaw(decimalRateOnly(e.target.value))}
+                  placeholder="e.g. 12 (optional)"
+                />
+                <p className="field-hint">
+                  Enter your assumed annual rate for installments. Leave blank to use 12%. All EMI math and disclaimers use
+                  this rate ({rateDisclaimerText}% right now).
+                </p>
               </div>
               <div className="field">
                 <label htmlFor="emi-term">Installment tenure</label>
@@ -465,8 +548,9 @@ function App() {
               <span>Step 3</span>
             </div>
             <p style={{ marginTop: 0, color: 'var(--muted)', lineHeight: 1.6, fontSize: 14 }}>
-              Annual lending rate modeled at {(ANNUAL_LOAN_RATE * 100).toFixed(0)}% on the financed balance (PKR). Best plan
-              minimizes interest while respecting affordability guardrails. Total cost includes any required down payment.
+              Annual lending rate modeled at <strong>{rateDisclaimerText}%</strong> on the financed balance (PKR), matching
+              the rate you entered in Step 1 (or 12% if left blank). Best plan minimizes interest while respecting
+              affordability guardrails. Total cost includes any required down payment.
             </p>
             {!financingEnabled ? (
               <p className="empty-panel">No EMI selected — comparison table is hidden. Choose an installment tenure above to compare options.</p>
@@ -476,7 +560,7 @@ function App() {
                   <thead>
                     <tr>
                       <th>Months</th>
-                      <th>Monthly</th>
+                      <th>Monthly expense</th>
                       <th>Interest</th>
                       <th>Total outlay</th>
                       <th>% income</th>
@@ -506,7 +590,7 @@ function App() {
               <span>Step 4</span>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-              <span className={`decision-pill ${verdictDisplayClass}`}>Final: {analysis.publicVerdict}</span>
+              <span className={`decision-pill ${verdictDisplayClass}`}>Final Decision: {analysis.publicVerdict}</span>
               <span className="decision-pill emi" style={{ textTransform: 'none', letterSpacing: '0.02em' }}>
                 Recommended: {analysis.bestEmiLabel}
               </span>
@@ -590,36 +674,6 @@ function App() {
               </div>
             </div>
             <div className="chart-card">
-              <div className="chart-title">
-                Payoff trajectory (financed principal · PKR)
-                {financingEnabled ? ` · ${emiTermMonths} mo` : ''}
-              </div>
-              {!financingEnabled ? (
-                <p className="empty-panel compact">Select an installment tenure to see principal vs interest paid over time.</p>
-              ) : (
-                <div className="chart-surface" onMouseLeave={() => setChartTipPayoff((n) => n + 1)}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={payoffSeries}>
-                      <CartesianGrid strokeDasharray="4 8" stroke="rgba(255,255,255,0.06)" />
-                      <XAxis dataKey="month" stroke="#94a3b8" tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                      <YAxis stroke="#94a3b8" tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                      <Tooltip
-                        key={chartTipPayoff}
-                        isAnimationActive
-                        animationDuration={200}
-                        animationEasing="ease-out"
-                        contentStyle={TOOLTIP_PANEL}
-                        shared={false}
-                      />
-                      <Legend />
-                      <Line type="monotone" dataKey="principalPaid" name="Principal paid" stroke="#5eead4" strokeWidth={2.5} dot={false} />
-                      <Line type="monotone" dataKey="interestPaid" name="Interest paid" stroke="#fb7185" strokeWidth={2.5} dot={false} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-            </div>
-            <div className="chart-card">
               <div className="chart-title">Installment comparison · PKR</div>
               {!financingEnabled ? (
                 <p className="empty-panel compact">No installment scenarios to chart while cash purchase is selected.</p>
@@ -640,7 +694,7 @@ function App() {
                         formatter={(v) => formatCurrency(v)}
                       />
                       <Legend />
-                      <Bar dataKey="monthly" name="Monthly" fill="#a78bfa" radius={[8, 8, 0, 0]} />
+                      <Bar dataKey="monthly" name="Monthly expense" fill="#a78bfa" radius={[8, 8, 0, 0]} />
                       <Bar dataKey="interest" name="Total interest" fill="#fb7185" radius={[8, 8, 0, 0]} />
                       <Bar dataKey="total" name="Total outlay" fill="#5eead4" radius={[8, 8, 0, 0]} />
                     </BarChart>

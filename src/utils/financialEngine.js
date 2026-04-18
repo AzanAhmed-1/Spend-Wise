@@ -240,6 +240,7 @@ export function buildAnalysisReport(ctx) {
     needsDownPayment,
     downPaymentRateLabel,
     userInstallmentLabel,
+    annualLoanRatePct = 12,
   } = ctx;
 
   const verdict = mapPublicVerdict(decision.key, riskScore);
@@ -262,7 +263,7 @@ export function buildAnalysisReport(ctx) {
   if (financingEnabled && bestPlan && bestPlan.pctIncome > 30) {
     riskFactors.push('EMI would absorb a material share of income.');
   }
-  if (assetPrice > income * 6) riskFactors.push('Asset price is high relative to annual income.');
+  if (assetPrice > income * 6) riskFactors.push('Purchase price is high relative to annual income.');
   if (riskFactors.length === 0) riskFactors.push('No critical structural risks flagged from inputs.');
 
   let cashFlow = '';
@@ -274,7 +275,7 @@ export function buildAnalysisReport(ctx) {
       needsDownPayment && downPaymentAmount > 0
         ? ` After ${formatCurrency(downPaymentAmount)} down (${downPaymentRateLabel}), `
         : ' ';
-    cashFlow = `${downNote.trim()}EMI of ${formatCurrency(bestPlan.monthlyEmi)} for ${bestPlan.months} months covers a financed balance of ${formatCurrency(loanPrincipal)}, with ${formatCurrency(bestPlan.totalInterest)} in interest on the loan portion.`;
+    cashFlow = `${downNote.trim()}EMI of ${formatCurrency(bestPlan.monthlyEmi)} for ${bestPlan.months} months covers a financed balance of ${formatCurrency(loanPrincipal)}, with ${formatCurrency(bestPlan.totalInterest)} in interest on the loan portion (modeled at ${Number(annualLoanRatePct).toFixed(1)}% annual on the financed balance).`;
   } else if (decision.key === 'BUY') {
     cashFlow =
       'Outright purchase preserves borrowing costs if post-purchase reserves remain intact.';
@@ -289,7 +290,7 @@ export function buildAnalysisReport(ctx) {
     longTerm =
       'Paying cash avoids interest and keeps future income free of this installment obligation.';
   } else if (bestPlan && decision.key !== 'BUY') {
-    longTerm = `Financing shifts ${formatCurrency(bestPlan.totalInterest)} in interest to the lender over ${bestPlan.months} months on the financed portion—reasonable if your after-tax return on savings is below the loan rate.`;
+    longTerm = `Financing shifts ${formatCurrency(bestPlan.totalInterest)} in interest to the lender over ${bestPlan.months} months on the financed portion at ${Number(annualLoanRatePct).toFixed(1)}% annual—reasonable if your after-tax return on savings is below that rate.`;
   } else {
     longTerm =
       'Buying outright avoids interest drag and keeps future income unencumbered by this liability.';
