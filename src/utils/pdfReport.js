@@ -204,12 +204,14 @@ export function buildSpendWisePdfDocument(analysis, inputs, emiPlans, decisionKe
   const savingsAfter = Math.max(0, sav - fromSavings);
   const monthsToAfford =
     stillShort <= 0 ? 0 : surplusThisMo > 0 ? Math.ceil(stillShort / surplusThisMo) : Infinity;
-  const upfrontRisk = rs >= 52 ? COLORS.warn : COLORS.safe;
+  const emergencyLow = (Number(inputs.expenses) || 0) * 3;
+  const upfrontFeasible = stillShort <= 0 && savingsAfter >= emergencyLow;
+  const upfrontRisk = upfrontFeasible ? COLORS.safe : (rs >= 52 ? COLORS.danger : COLORS.warn);
   drawChipRight(
     doc,
     c1x + cardW - pad,
     headY,
-    analysis.publicVerdictKey === 'buy' && decisionKey === 'BUY' ? 'SAFE' : rs >= 52 ? 'RISKY' : 'CAUTION',
+    upfrontFeasible ? 'SAFE' : (rs >= 52 ? 'RISKY' : 'CAUTION'),
     upfrontRisk
   );
   let cy = cardY + 34;
@@ -247,8 +249,11 @@ export function buildSpendWisePdfDocument(analysis, inputs, emiPlans, decisionKe
   const markupPct = price > 0 ? ((totalCost - price) / price) * 100 : 0;
   const surplusAfterPay = (Number(monthlySurplus) || 0) - payment;
   const safeInstallment = plan ? surplusAfterPay >= 0 && plan.pctIncome <= 35 : false;
+  const optimalInstallment = safeInstallment && (!upfrontFeasible || stillShort > 0);
   if (plan) {
-    drawChipRight(doc, c2x + cardW - pad, headY, safeInstallment ? 'SAFE' : 'RISKY', safeInstallment ? COLORS.safe : COLORS.warn);
+    const instColor = optimalInstallment ? COLORS.safe : (safeInstallment ? COLORS.safe : COLORS.warn);
+    const instLabel = optimalInstallment ? 'OPTIMAL' : (safeInstallment ? 'SAFE' : 'RISKY');
+    drawChipRight(doc, c2x + cardW - pad, headY, instLabel, instColor);
   } else {
     setMutedStyle(doc);
     doc.text('-', c2x + cardW - pad - 4, headY);
@@ -289,7 +294,10 @@ export function buildSpendWisePdfDocument(analysis, inputs, emiPlans, decisionKe
   const bankSurplusAfter = bankActive ? monthlySurplus - bankEmiOneMonth : 0;
   const bankTotal = bankActive ? down + bankEmiOneMonth : 0;
   if (bankActive) {
-    drawChipRight(doc, c3x + cardW - pad, headY, 'DANGEROUS', COLORS.danger);
+    const bankFeasible = bankSurplusAfter > 0;
+    const bankColor = bankFeasible ? COLORS.warn : COLORS.danger;
+    const bankLabel = bankFeasible ? 'CAUTION' : 'AVOID';
+    drawChipRight(doc, c3x + cardW - pad, headY, bankLabel, bankColor);
   } else {
     setMutedStyle(doc);
     doc.text('-', c3x + cardW - pad - 4, headY);
