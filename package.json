@@ -20,6 +20,6 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
     "kill-port": "^2.0.1",
-    "vite": "^5.4.11"
+    "vite": "^5.4.21"
   }
 }
